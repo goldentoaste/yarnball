@@ -1,6 +1,12 @@
-from PyQt5.QtGui import QFont, QPainter, QPixmap
+from time import time
+from PyQt5 import QtCore, QtGui
+from PyQt5.QtGui import QFont, QMouseEvent, QPainter, QPixmap
 from PyQt5.QtWidgets import *
+from PyQt5.QtCore import Qt
+import random
 import sys
+
+MouseButton = QtCore.Qt.MouseButton
 
 
 class Main(QMainWindow):
@@ -12,22 +18,47 @@ class Main(QMainWindow):
     def init(self):
         self.camX = 0
         self.camY = 0
+        self.draggingItem = False
+
+        self.lastPos = None
         # self.items = ['TestingBox(self)']
 
-        self.setGeometry(300, 300, 1000, 1000)
+        self.setGeometry(300, 100, 1000, 700)
         self.setWindowTitle("YarnBall")
 
         self.label = QLabel()
-        canvas = QPixmap(1000, 1000)
+        canvas = QPixmap(1000, 700)
         self.label.setPixmap(canvas)
         self.setCentralWidget(self.label)
 
-        self.items = [TestingBox(self)]
+        self.items = [TestingBox(self), TestingBox(self)]
+        self.reposition()
         self.show()
 
     def reposition(self):
         for item in self.items:
-            pass
+            self.repositionItem(item)
+
+    def repositionItem(self, item):
+        item.move(item.getPos()[0] - self.camX, item.getPos()[1] - self.camY)
+
+    def mouseMoveEvent(self, a0: QMouseEvent) -> None:
+        if a0.buttons() == MouseButton.MidButton:
+            
+            # update widgets as mouse is moving
+            self.camX -= a0.globalX() - self.lastPos[0]
+            self.camY -= a0.globalY() - self.lastPos[1]
+
+            self.lastPos = (a0.globalX(), a0.globalY())
+            self.reposition()
+            
+
+    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        for item in self.items:
+            item.disable()
+
+        if a0.buttons() == MouseButton.MidButton:
+            self.lastPos = (a0.globalX(), a0.globalY())
 
 
 class TestingBox(QWidget):
@@ -39,9 +70,11 @@ class TestingBox(QWidget):
 
         super().__init__()
         self.setParent(parent)
-        self.x = pos[0]
-        self.y = pos[1]
+        self.master = parent
+        self.xPos = random.randint(100, 500)
+        self.yPos = random.randint(100, 500)
         self.fontSize = 12
+        self.lastPos = None
 
         self.editing = True
 
@@ -56,10 +89,10 @@ class TestingBox(QWidget):
                                  """
         )
         self.title.setStyleSheet(
-            f"font-size: {self.fontSize}pt; font-family: Comic Sans MS;"
+            f" :enabled{{font-size:{self.fontSize}pt; font-family: Comic Sans MS;}}:disabled {{font-size:{self.fontSize}pt; font-family: Comic Sans MS; color: rgb(0,0,0);background-color:rgb(230, 230, 230)}}"
         )
         self.content.setStyleSheet(
-            f"font-size: {self.fontSize}pt; font-family: Comic Sans MS;"
+            f":enabled{{font-size:{self.fontSize}pt; font-family: Comic Sans MS;}}:disabled {{font-size:{self.fontSize}pt; font-family: Comic Sans MS; color: rgb(0,0,0);background-color:rgb(230, 230, 230)}}"
         )
         # self.toggleEdit()
         box = QGroupBox()
@@ -72,21 +105,49 @@ class TestingBox(QWidget):
         layout.addWidget(self.title)
         layout.addWidget(self.content)
 
-        self.setGeometry(100, 100, 300, 300)
-
         box.setLayout(layout)
 
         widgetLayout = QVBoxLayout()
         widgetLayout.addWidget(box)
         self.setLayout(widgetLayout)
+        self.setGeometry(100, 100, 300, 300)
+        self.disable()
 
-    def toggleEdit(self):
-        if self.editing:
-            self.title.setReadOnly(True)
-            self.content.setReadOnly(True)
-        else:
-            self.title.setReadOnly(False)
-            self.content.setReadOnly(False)
+    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        if a0.buttons() == MouseButton.LeftButton:
+            self.master.draggingItem = True
+            self.lastPos = (a0.globalX(), a0.globalY())
+            self.raise_()
+        if not self.editing:
+            self.master.mousePressEvent(a0)
+
+    def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
+        if a0.buttons() == MouseButton.LeftButton:
+            self.enable()
+        return super().mouseDoubleClickEvent(a0)
+
+    def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
+        if a0.buttons() == MouseButton.LeftButton:
+            self.xPos += a0.globalX() - self.lastPos[0]
+            self.yPos += a0.globalY() - self.lastPos[1]
+            self.master.repositionItem(self)
+            self.lastPos = (a0.globalX(), a0.globalY())
+
+        if not self.editing:
+            self.master.mouseMoveEvent(a0)
+
+    def enable(self):
+        self.editing = True
+        self.title.setDisabled(False)
+        self.content.setDisabled(False)
+
+    def disable(self):
+        self.editing = False
+        self.title.setDisabled(True)
+        self.content.setDisabled(True)
+
+    def getPos(self):
+        return (self.xPos, self.yPos)
 
 
 if __name__ == "__main__":
