@@ -1,27 +1,45 @@
-
-
 import sys
-from PyQt5.QtWidgets import (QApplication, QLabel, QWidget)
+from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QWidget, QShortcut, QLabel, QApplication, QHBoxLayout
 
 
-class MouseTracker(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.initUI()
-        self.setMouseTracking(True)
+class Window(QWidget):
+    def __init__(self, *args, **kwargs):
+        QWidget.__init__(self, *args, **kwargs)
 
-    def initUI(self):
-        self.setGeometry(300, 300, 300, 200)
-        self.setWindowTitle('Mouse Tracker')
-        self.label = QLabel(self)
-        self.label.resize(200, 40)
+        self.labels = [QLabel("Try Ctrl+O", self)]
+        self.shortcut = QShortcut(QKeySequence("Ctrl+O"), self)
+        self.shortcut.activated.connect(self.on_open)
+        self.other = []
+        self.layout = QHBoxLayout()
+        self.layout.addWidget(self.labels[0])
+
+        self.setLayout(self.layout)
+        self.resize(150, 100)
         self.show()
+        self.closeShortCut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self.closeShortCut.activated.connect(self.remove)
+        
+        self.labels[0].setVisible(False)
+        item = self.labels[0]
+        
+        self.other.append(item)
+        self.labels.remove(item)
+        temp = self.other[0] 
+        self.other.remove(temp)
+        self.labels.append(temp)
+        self.labels[0].setVisible(True)
 
-    def mouseMoveEvent(self, event):
-        self.label.setText('Mouse coords: ( %d : %d )' % (event.x(), event.y()))
+    @pyqtSlot()
+    def remove(self):
+        print("remove!")
+
+    @pyqtSlot()
+    def on_open(self):
+        print("Opening!")
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = MouseTracker()
-    sys.exit(app.exec_())
+app = QApplication(sys.argv)
+win = Window()
+sys.exit(app.exec_())
