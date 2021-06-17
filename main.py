@@ -1,12 +1,12 @@
-from time import time
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtGui import QFont, QMouseEvent, QPainter, QPixmap
+from PyQt5.QtGui import QMouseEvent, QPainter, QPixmap
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt
+
 import random
 import sys
 
 MouseButton = QtCore.Qt.MouseButton
+MousePointer = QtCore.Qt.CursorShape
 
 
 class Main(QMainWindow):
@@ -31,9 +31,10 @@ class Main(QMainWindow):
         self.label.setPixmap(canvas)
         self.setCentralWidget(self.label)
 
-        self.items = [TestingBox(self), TestingBox(self)]
+        self.items = [PostBox(self), PostBox(self)]
         self.reposition()
         self.show()
+        self.setMouseTracking(True)
 
     def reposition(self):
         for item in self.items:
@@ -44,14 +45,12 @@ class Main(QMainWindow):
 
     def mouseMoveEvent(self, a0: QMouseEvent) -> None:
         if a0.buttons() == MouseButton.MidButton:
-            
             # update widgets as mouse is moving
             self.camX -= a0.globalX() - self.lastPos[0]
             self.camY -= a0.globalY() - self.lastPos[1]
 
             self.lastPos = (a0.globalX(), a0.globalY())
             self.reposition()
-            
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         for item in self.items:
@@ -61,11 +60,10 @@ class Main(QMainWindow):
             self.lastPos = (a0.globalX(), a0.globalY())
 
 
-class TestingBox(QWidget):
+class PostBox(QWidget):
     def __init__(
         self,
         parent,
-        pos=(0, 0),
     ):
 
         super().__init__()
@@ -73,6 +71,8 @@ class TestingBox(QWidget):
         self.master = parent
         self.xPos = random.randint(100, 500)
         self.yPos = random.randint(100, 500)
+        self.sizeX = 300
+        self.sizeY = 300
         self.fontSize = 12
         self.lastPos = None
 
@@ -96,6 +96,7 @@ class TestingBox(QWidget):
         )
         # self.toggleEdit()
         box = QGroupBox()
+        box.setMouseTracking(True)
         box.setStyleSheet(
             """QGroupBox {
             background-color:  rgb(50, 191, 175);
@@ -111,7 +112,8 @@ class TestingBox(QWidget):
         widgetLayout.addWidget(box)
         self.setLayout(widgetLayout)
         self.setGeometry(100, 100, 300, 300)
-        self.disable()
+        self.setMouseTracking(True)
+        self.corner = False
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
@@ -124,17 +126,47 @@ class TestingBox(QWidget):
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
             self.enable()
-        return super().mouseDoubleClickEvent(a0)
 
     def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
-        if a0.buttons() == MouseButton.LeftButton:
-            self.xPos += a0.globalX() - self.lastPos[0]
-            self.yPos += a0.globalY() - self.lastPos[1]
-            self.master.repositionItem(self)
+        def dist(a, b):
+            return abs(a - b)
+
+        def getDelta():
+            out = (a0.globalX() - self.lastPos[0], a0.globalY() - self.lastPos[1])
             self.lastPos = (a0.globalX(), a0.globalY())
+            return out
+
+        if dist(a0.x(), self.sizeX) < 30 and dist(a0.y(), self.sizeY) < 30:
+
+            if not self.corner:
+                self.setCursor(MousePointer.SizeFDiagCursor)
+                self.corner = True
+        elif not a0.buttons() == MouseButton.LeftButton:
+            self.corner = False
+            self.setCursor(MousePointer.ArrowCursor)
+            
+        if self.corner and a0.buttons() == MouseButton.LeftButton:
+            delta = getDelta()
+            self.sizeX = max(100, self.sizeX + delta[0])
+            self.sizeY = max(100, self.sizeY + delta[1])
+            self.resize(self.sizeX, self.sizeY)
+            return 
+
+        
+            
+            
+        if a0.buttons() == MouseButton.LeftButton and not self.corner:
+            delta = getDelta()
+            self.xPos += delta[0]
+            self.yPos += delta[1]
+            self.master.repositionItem(self)
 
         if not self.editing:
             self.master.mouseMoveEvent(a0)
+
+    def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
+        self.corner = False
+        self.setCursor(MousePointer.ArrowCursor)
 
     def enable(self):
         self.editing = True
