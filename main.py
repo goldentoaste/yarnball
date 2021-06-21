@@ -1,9 +1,9 @@
 from PyQt5 import QtCore, QtGui
 from PyQt5 import QtWidgets
-from PyQt5.QtGui import QMouseEvent, QPixmap, QResizeEvent
+from PyQt5.QtGui import QMouseEvent, QPainter, QPixmap
 from PyQt5.QtWidgets import *
 
-import random
+
 import sys
 
 from pynput.keyboard import Key
@@ -32,15 +32,16 @@ class Main(QMainWindow):
 
         self.items = []
         self.old = []
-
+        self.grid = BackGroundGrid(self)
+        self.resize(1280, 800)
         self.show()
-        self.label = QLabel()
-        canvas = QPixmap(1280, 800)
-        self.label.setPixmap(canvas)
-        self.setCentralWidget(self.label)
+        # self.label = QLabel()
+        # canvas = QPixmap(1280, 800)
+        # self.label.setPixmap(canvas)
+        self.setCentralWidget(self.grid)
         self.move(150, 120)
         self.setMouseTracking(True)
-
+        
         self.keys = set()
         # self.hotkeyManager = HotkeyManager()
         # self.hotkeyManager.setHotkey("closing", {"lctrl", "w"}, self.removeItem)
@@ -49,10 +50,11 @@ class Main(QMainWindow):
         self.lastColor = None
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
-        if self.label is None:
-            return
-        self.canvas = QPixmap(a0.size().width(), a0.size().height())
-        self.label.setPixmap(self.canvas)
+        # if self.label is None:
+        #     return
+        # self.canvas = QPixmap(a0.size().width(), a0.size().height())
+        # self.label.setPixmap(self.canvas)
+        self.grid.resize(self.width(), self.height())
 
     def removeItem(self):
         item = self.selectedItem
@@ -87,10 +89,10 @@ class Main(QMainWindow):
         )
 
     def mouseMoveEvent(self, a0: QMouseEvent) -> None:
-        if a0.buttons() == MouseButton.MidButton:
+        if a0.buttons() == MouseButton.RightButton:
             # update widgets as mouse is moving
             if self.selectedItem is not None:
-                self.selectedItem.disable()
+                self.deselectedCurrentItem()
                 self.selectedItem = None
 
             self.camX -= (a0.globalX() - self.lastPos[0]) / self.scale
@@ -98,21 +100,30 @@ class Main(QMainWindow):
 
             self.lastPos = (a0.globalX(), a0.globalY())
             self.reposition()
+            self.grid.repaint()
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
 
         if self.selectedItem is not None:
-            self.selectedItem.disable()
+            self.deselectedCurrentItem()
             self.selectedItem = None
 
-        if a0.buttons() == MouseButton.MidButton:
+        if a0.buttons() == MouseButton.RightButton:
             self.lastPos = (a0.globalX(), a0.globalY())
 
     def selectNewItem(self, item):
-
         if self.selectedItem is not None:
-            self.selectedItem.disable()
+            self.deselectedCurrentItem()
         self.selectedItem = item
+
+    def deselectedCurrentItem(self):
+        self.selectedItem.disable()
+        self.selectedItem.box.setStyleSheet(
+            f"""QGroupBox {{
+        background-color:  {self.selectedItem.color};
+        border:5px solid {self.selectedItem.color};
+        }}"""
+        )
 
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
@@ -136,14 +147,18 @@ class Main(QMainWindow):
         item.sizeY = sizeY
         item.title.setText(title)
         item.content.setText(content)
+        item.color = color
         item.box.setStyleSheet(
             f"""QGroupBox {{
             background-color:  {color};
+            border:5px solid {color};
             }}"""
         )
         self.items.append(item)
         self.repositionItem(item)
         item.scale(self.scale)
+
+    
 
     def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.add(a0.key())
@@ -166,6 +181,44 @@ class Main(QMainWindow):
         self.keys.clear()
 
 
+ 
+class BackGroundGrid(QWidget):
+    
+    def __init__(self, parent,  *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.minGridSize = 5
+        self.maxGridSize = 30
+        self.currentGridSize = 30
+        self.setParent(parent)
+        self.master = parent
+        print("bruh1")
+        
+    def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
+        self.repaint()
+        
+    def paintEvent(self, a0: QtGui.QPaintEvent) -> None:
+        print("bruh")
+        rows = (self.height() // self.currentGridSize) + 2
+        cols = 2+ (self.width() // self.currentGridSize)
+        
+        qp = QPainter(self)
+        qp.translate(.5, .5)
+        qp.setRenderHints(qp.Antialiasing)
+        
+        
+        xMax = self.width() +  self.currentGridSize + self.master.camX
+        yMax = self.height() + self.currentGridSize + self.master.camY
+        xMin = -self.currentGridSize + self.master.camX
+        yMin = -self.currentGridSize + self.master.camY
+        
+        
+        for r in range(-1, rows):
+            qp.drawLine(xMin, r * self.currentGridSize + self.master.camY, xMax,  r * self.currentGridSize + self.master.camY)
+            
+        for c in range(-1, cols):
+            qp.drawLine( c * self.currentGridSize + self.master.camX, yMin,c * self.currentGridSize + self.master.camY, yMax)
+        
+
 class PostBox(QWidget):
     def __init__(self, parent):
 
@@ -178,7 +231,7 @@ class PostBox(QWidget):
         self.sizeY = 300
         self.fontSize = 12
         self.lastPos = None
-
+        self.color = None
         self.editing = True
 
         self.title = QLineEdit("Title of Post")
@@ -200,16 +253,15 @@ class PostBox(QWidget):
             background-color:  rgb(50, 191, 175);
             }"""
         )
-        layout = QVBoxLayout()
-        layout.addWidget(self.title)
-        layout.addWidget(self.content)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.title)
+        self.layout.addWidget(self.content)
 
-        self.box.setLayout(layout)
+        self.box.setLayout(self.layout)
 
-        widgetLayout = QVBoxLayout()
-        widgetLayout.addWidget(self.box)
-        self.setLayout(widgetLayout)
-        self.setGeometry(100, 100, 300, 300)
+        self.widgetLayout = QVBoxLayout()
+        self.widgetLayout.addWidget(self.box)
+        self.setLayout(self.widgetLayout)
         self.setMouseTracking(True)
         self.corner = False
         self.disable()
@@ -217,12 +269,22 @@ class PostBox(QWidget):
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
-            self.master.selectNewItem(self)
+
             self.lastPos = (a0.globalX(), a0.globalY())
             self.raise_()
+            self.selectSelf()
             return
         if not self.editing:
             self.master.mousePressEvent(a0)
+
+    def selectSelf(self):
+        self.master.selectNewItem(self)
+        self.box.setStyleSheet(
+            f"""QGroupBox {{
+            background-color:  {self.color};
+            border:5px dashed rgb(240, 100, 100);
+            }}"""
+        )
 
     def setFontSize(self, pts):
         self.title.setStyleSheet(
@@ -235,7 +297,15 @@ class PostBox(QWidget):
     def scale(self, factor):
         self.setFontSize(int(self.fontSize * factor))
         self.resize(int(self.sizeX * factor), int(self.sizeY * factor))
-        self.box.setContentsMargins(5 * factor, 5 * factor, 5 * factor, 5 * factor)
+        self.box.setContentsMargins(
+            int(5 * factor), int(5 * factor), int(5 * factor), int(5 * factor)
+        )
+        self.layout.setContentsMargins(
+            int(5 * factor), int(5 * factor), int(5 * factor), int(5 * factor)
+        )
+        self.widgetLayout.setContentsMargins(
+            int(5 * factor), int(5 * factor), int(5 * factor), int(5 * factor)
+        )
 
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
@@ -255,12 +325,18 @@ class PostBox(QWidget):
             return abs(a - b)
 
         def getDelta():
-            out = (a0.globalX() - self.lastPos[0], a0.globalY() - self.lastPos[1])
+            out = (
+                (a0.globalX() - self.lastPos[0]) / self.master.scale,
+                (a0.globalY() - self.lastPos[1]) / self.master.scale,
+            )
             self.lastPos = (a0.globalX(), a0.globalY())
             return out
 
-        if dist(a0.x(), self.sizeX) < 30 and dist(a0.y(), self.sizeY) < 30:
-
+        print("x", a0.x(), self.sizeX, "y", a0.y(), self.sizeY)
+        if (
+            dist(a0.x(), self.sizeX * self.master.scale) < 30 * self.master.scale
+            and dist(a0.y(), self.sizeY * self.master.scale) < 30 * self.master.scale
+        ):
             if not self.corner:
                 self.setCursor(MousePointer.SizeFDiagCursor)
                 self.corner = True
@@ -272,13 +348,15 @@ class PostBox(QWidget):
             delta = getDelta()
             self.sizeX = max(100, self.sizeX + delta[0])
             self.sizeY = max(100, self.sizeY + delta[1])
-            self.resize(self.sizeX, self.sizeY)
+            self.resize(
+                int(self.sizeX * self.master.scale), int(self.sizeY * self.master.scale)
+            )
             return
 
         if a0.buttons() == MouseButton.LeftButton and not self.corner:
             delta = getDelta()
-            self.xPos += delta[0] / self.master.scale
-            self.yPos += delta[1] / self.master.scale
+            self.xPos += delta[0]
+            self.yPos += delta[1]
             self.master.repositionItem(self)
 
         if not self.editing:
