@@ -1,9 +1,10 @@
 from PyQt5 import QtCore, QtGui
 
-from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
+from PyQt5.QtGui import QColor, QKeySequence, QPainter, QPen
 from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QShortcut,
     QWidget,
     QLineEdit,
     QTextEdit,
@@ -20,61 +21,60 @@ MousePointer = QtCore.Qt.CursorShape
 
 
 class Main(QWidget):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        QWidget.__init__(self, *args, **kwargs)
 
-        super().__init__()
-        self.init()
+        self.label = QLabel("a", self)
 
-    def init(self):
-        self.camX = 0
-        self.camY = 0
-        self.scale = 1
-        self.selectedItem = None
-        self.lastPos = None
+        # self.layout.addWidget(self.labels[0])
 
-        self.setWindowTitle("YarnBall")
-
-        self.items = []
-        self.old = []
-        self.grid = BackGroundGrid(self)
-        self.label = QLabel(" ", self)
-
-        self.resize(1280, 800)
+        self.resize(1000, 1000)
         self.show()
 
-        self.move(150, 120)
-        self.setMouseTracking(True)
+        self.scale = 1
+        self.camX = 0
+        self.camY = 0
+        self.items = []
 
-        self.keys = set()
+    def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
+        print("mouse doube")
+        if a0.buttons() == MouseButton.LeftButton:
+            self.newItem(
+                (a0.x() - self.size().width() / 2) / self.scale + self.camX,
+                (a0.y() - self.size().height() / 2) / self.scale + self.camY,
+                300,
+                300,
+                "Title",
+                "Content",
+                "rgb(50, 191, 175)",
+            )
 
-        self.lastColor = None
+    # def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
+    #     # if self.label is None:
+    #     #     return
+    #     # self.canvas = QPixmap(a0.size().width(), a0.size().height())
+    #     # self.label.setPixmap(self.canvas)
+    #     self.grid.resize(self.width(), self.height())
 
-    def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
-        # if self.label is None:
-        #     return
-        # self.canvas = QPixmap(a0.size().width(), a0.size().height())
-        # self.label.setPixmap(self.canvas)
-        self.grid.resize(self.width(), self.height())
+    # def removeItem(self):
+    #     item = self.selectedItem
+    #     print("removing")
+    #     if self.isVisible() and item is not None:
+    #         item.hide()
+    #         self.old.append(item)
+    #         self.items.remove(item)
+    #         self.selectedItem = None
+    #         return True
+    #     return False
 
-    def removeItem(self):
-        item = self.selectedItem
-        print("removing")
-        if self.isVisible() and item is not None:
-            item.hide()
-            self.old.append(item)
-            self.items.remove(item)
-            self.selectedItem = None
-            return True
-        return False
-
-    def undoRemove(self):
-        print("undo")
-        if self.isVisible() and len(self.old) > 0:
-            item = self.old.pop()
-            self.items.append(item)
-            item.show()
-            return True
-        return False
+    # def undoRemove(self):
+    #     print("undo")
+    #     if self.isVisible() and len(self.old) > 0:
+    #         item = self.old.pop()
+    #         self.items.append(item)
+    #         item.show()
+    #         return True
+    #     return False
 
     def reposition(self):
         for item in self.items:
@@ -88,55 +88,42 @@ class Main(QWidget):
             + self.size().height() // 2,
         )
 
-    def mouseMoveEvent(self, a0: QMouseEvent) -> None:
-        if a0.buttons() == MouseButton.RightButton:
-            # update widgets as mouse is moving
-            if self.selectedItem is not None:
-                self.deselectedCurrentItem()
-                self.selectedItem = None
+    # def mouseMoveEvent(self, a0: QMouseEvent) -> None:
+    #     if a0.buttons() == MouseButton.RightButton:
+    #         # update widgets as mouse is moving
+    #         if self.selectedItem is not None:
+    #             self.deselectedCurrentItem()
+    #             self.selectedItem = None
 
-            self.camX -= (a0.globalX() - self.lastPos[0]) / self.scale
-            self.camY -= (a0.globalY() - self.lastPos[1]) / self.scale
+    #         self.camX -= (a0.globalX() - self.lastPos[0]) / self.scale
+    #         self.camY -= (a0.globalY() - self.lastPos[1]) / self.scale
 
-            self.lastPos = (a0.globalX(), a0.globalY())
-            self.reposition()
-            self.grid.repaint()
+    #         self.lastPos = (a0.globalX(), a0.globalY())
+    #         self.reposition()
+    #         self.grid.repaint()
 
-    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+    # def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
 
-        if self.selectedItem is not None:
-            self.deselectedCurrentItem()
-            self.selectedItem = None
+    #     # if self.selectedItem is not None:
+    #     #     self.deselectedCurrentItem()
+    #     #     self.selectedItem = None
 
-        if a0.buttons() == MouseButton.RightButton:
-            self.lastPos = (a0.globalX(), a0.globalY())
+    #     if a0.buttons() == MouseButton.RightButton:
+    #         self.lastPos = (a0.globalX(), a0.globalY())
 
-    def selectNewItem(self, item):
-        if self.selectedItem is not None:
-            self.deselectedCurrentItem()
-        self.selectedItem = item
+    # def selectNewItem(self, item):
+    #     if self.selectedItem is not None:
+    #         self.deselectedCurrentItem()
+    #     self.selectedItem = item
 
-    def deselectedCurrentItem(self):
-        self.selectedItem.disable()
-        self.selectedItem.box.setStyleSheet(
-            f"""QGroupBox {{
-        background-color:  {self.selectedItem.color};
-        border:5px solid {self.selectedItem.color};
-        }}"""
-        )
-
-    def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
-        print("mouse doube")
-        if a0.buttons() == MouseButton.LeftButton:
-            self.newItem(
-                (a0.x() - self.size().width() / 2) / self.scale + self.camX,
-                (a0.y() - self.size().height() / 2) / self.scale + self.camY,
-                300,
-                300,
-                "Title",
-                "Content",
-                self.lastColor if self.lastColor is not None else "rgb(50, 191, 175)",
-            )
+    # def deselectedCurrentItem(self):
+    #     self.selectedItem.disable()
+    #     self.selectedItem.box.setStyleSheet(
+    #         f"""QGroupBox {{
+    #     background-color:  {self.selectedItem.color};
+    #     border:5px solid {self.selectedItem.color};
+    #     }}"""
+    #     )
 
     def newItem(
         self, posX=0, posY=0, sizeX=300, sizeY=300, title="", content="", color=""
@@ -160,36 +147,33 @@ class Main(QWidget):
         self.repositionItem(item)
         item.scale(self.scale)
 
-    def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
-        self.keys.add(a0.key())
-        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_W}:
-            self.removeItem()
-        elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_Z}:
-            self.undoRemove()
-        if self.keys == {QtCore.Qt.Key.Key_Equal}:
-            self.scale = min(2.6, self.scale + 0.2)
-            for item in self.items:
-                item.scale(self.scale)
-            self.reposition()
-            self.grid.repaint()
-        if self.keys == {QtCore.Qt.Key.Key_Minus}:
-            self.scale = max(0.4, self.scale - 0.2)
-            for item in self.items:
-                item.scale(self.scale)
-            self.reposition()
-            self.grid.repaint()
+    # def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
+    #     self.keys.add(a0.key())
+    #     if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_W}:
+    #         self.removeItem()
+    #     elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_Z}:
+    #         self.undoRemove()
+    #     if self.keys == {QtCore.Qt.Key.Key_Equal}:
+    #         self.scale = min(2.6, self.scale + 0.2)
+    #         for item in self.items:
+    #             item.scale(self.scale)
+    #         self.reposition()
+    #     if self.keys == {QtCore.Qt.Key.Key_Minus}:
+    #         self.scale = max(0.4, self.scale - 0.2)
+    #         for item in self.items:
+    #             item.scale(self.scale)
+    #         self.reposition()
 
-    def keyReleaseEvent(self, a0: QtGui.QKeyEvent) -> None:
-        self.keys.clear()
+    # def keyReleaseEvent(self, a0: QtGui.QKeyEvent) -> None:
+    #     self.keys.clear()
 
 
 class BackGroundGrid(QWidget):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        self.gridSize = 30
-        self.minSize = 15
-        self.maxSize = 50
+        self.minGridSize = 15
+        self.maxGridSize = 50
+        self.currentGridSize = 30
         self.setParent(parent)
         self.master = parent
 
@@ -197,45 +181,36 @@ class BackGroundGrid(QWidget):
         self.repaint()
 
     def paintEvent(self, a0: QtGui.QPaintEvent) -> None:
-        scaledGridSize = self.gridSize * self.master.scale
-        if scaledGridSize < self.minSize:
-            scaledGridSize = scaledGridSize - self.minSize + self.maxSize
-        elif scaledGridSize > self.maxSize:
-            scaledGridSize = scaledGridSize - self.maxSize + self.minSize
-            
-            
-        rows = int((self.height() / scaledGridSize) + 1) + 2
-        cols = 2 + int((self.width() / scaledGridSize)+1)
+        rows = (self.height() // self.currentGridSize) + 2
+        cols = 2 + (self.width() // self.currentGridSize)
 
         painter = QPainter(self)
         painter.translate(0.5, 0.5)
         painter.setRenderHints(painter.Antialiasing)
         painter.setBackground(QColor(235, 235, 235))
         painter.setPen(QPen(QColor(120, 110, 110), 1.35))
-        
-        
 
-        xOffset = (self.master.camX * self.master.scale % scaledGridSize) 
-        yOffset = (self.master.camY * self.master.scale % scaledGridSize) 
+        xOffset = self.master.camX % self.currentGridSize
+        yOffset = self.master.camY % self.currentGridSize
 
-        xMax = int(self.width() + scaledGridSize- xOffset)
-        yMax = int(self.height() +scaledGridSize - yOffset)
-        xMin = int(-scaledGridSize - xOffset)
-        yMin = int(-scaledGridSize - yOffset)
+        xMax = int(self.width() + self.currentGridSize - xOffset)
+        yMax = int(self.height() + self.currentGridSize - yOffset)
+        xMin = int(-self.currentGridSize - xOffset)
+        yMin = int(-self.currentGridSize - yOffset)
 
         for r in range(-1, rows):
             painter.drawLine(
                 xMin,
-                int(r *scaledGridSize - yOffset),
+                int(r * self.currentGridSize - yOffset),
                 xMax,
-                int(r *scaledGridSize - yOffset),
+                int(r * self.currentGridSize - yOffset),
             )
 
         for c in range(-1, cols):
             painter.drawLine(
-                int(c * scaledGridSize - xOffset),
+                int(c * self.currentGridSize - xOffset),
                 yMin,
-                int(c * scaledGridSize - xOffset),
+                int(c * self.currentGridSize - xOffset),
                 yMax,
             )
 
