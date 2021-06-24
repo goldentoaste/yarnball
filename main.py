@@ -22,7 +22,8 @@ MousePointer = QtCore.Qt.CursorShape
 
 
 def rgbTuple(rgb):
-    return [int (i) for i in rgb[4:-1].split(",")]
+    return [int(i) for i in rgb[4:-1].split(",")]
+
 
 class Main(QWidget):
     def __init__(self):
@@ -54,8 +55,6 @@ class Main(QWidget):
         self.keys = set()
 
         self.lastColor = None
-        
-        self.installEventFilter(self)
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         self.grid.resize(self.width(), self.height())
@@ -108,26 +107,40 @@ class Main(QWidget):
         if a0.buttons() == MouseButton.RightButton and self.selectedItem is not None:
             self.grid.drawLine(
                 (
-                    a0.x() + self.selectedItem.pos().x(),
-                    a0.y() + self.selectedItem.pos().y(),
+                    a0.x() ,
+                    a0.y() ,
                 )
             )
+            
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+
+     
         if a0.buttons() == MouseButton.RightButton:
             if self.selectedItem is not None:
                 self.grid.startLine(self.selectedItem)
-            else: 
+            else:
                 self.grid.stopLine()
         if a0.buttons() == MouseButton.MiddleButton:
             self.lastPos = (a0.globalX(), a0.globalY())
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.grid.stopLine()
+      
         if self.selectedItem is not None:
+            if a0.button() == MouseButton.RightButton:
+                temp = self.getBoxClicked(a0.pos())
+                if temp is not None: 
+                    self.connections[self.selectedItem].append(temp)
+                    self.grid.repaint()
             self.deselectedCurrentItem()
             self.selectedItem = None
 
+    def getBoxClicked(self, pos):
+        for item in self.items:
+            if QtCore.QRect(item.pos(), item.size()).contains(pos):
+                return item
+            
     def selectNewItem(self, item):
         if self.selectedItem is not None:
             self.deselectedCurrentItem()
@@ -144,7 +157,7 @@ class Main(QWidget):
         self.selectedItem.scale(self.scale)
 
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
-        print("mouse doube")
+
         if a0.buttons() == MouseButton.LeftButton:
             self.newItem(
                 (a0.x() - self.size().width() / 2) / self.scale + self.camX,
@@ -153,13 +166,13 @@ class Main(QWidget):
                 300,
                 "Title",
                 "Content",
-                self.lastColor if self.lastColor is not None else "rgb(50, 191, 175)",
+                self.lastColor if self.lastColor is not None else "#37A0D2",
             )
 
     def newItem(
         self, posX=0, posY=0, sizeX=300, sizeY=300, title="", content="", color=""
     ):
-        print("newItem")
+
         item = PostBox(self)
         item.xPos = posX
         item.yPos = posY
@@ -211,9 +224,6 @@ class Main(QWidget):
     def keyReleaseEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.clear()
 
-    def eventFilter(self, a0: 'QtCore.QObject', a1: 'QtCore.QEvent') -> bool:
-        print(a0, a1.type())
-        return False
 
 class BackGroundGrid(QWidget):
     def __init__(self, parent, *args, **kwargs):
@@ -285,19 +295,31 @@ class BackGroundGrid(QWidget):
 
         # draw foreground lines:
         for item1 in self.master.items:
-            painter.setPen(QPen(QColor(item1.color)))
-            
+            painter.setPen(QPen(QColor(item1.color), 5))
+
             for item2 in self.master.connections[item1]:
                 painter.drawLine(
-                    item1.xPos - self.master.camX,
-                    item1.yPos - self.master.camY,
-                    item2.xPos - self.master.camX,
-                    item2.yPos - self.master.camY,
+                    int(
+                    (item1.getPos()[0] - self.master.camX) * self.master.scale
+                )
+                + self.size().width() // 2,
+                int(
+                    (item1.getPos()[1] - self.master.camY) * self.master.scale
+                )
+                + self.size().height() // 2,
+                    int(
+                    (item2.getPos()[0] - self.master.camX) * self.master.scale
+                )
+                + self.size().width() // 2,
+                int(
+                    (item2.getPos()[1] - self.master.camY) * self.master.scale
+                )
+                + self.size().height() // 2,
                 )
 
         if self.currentPos is not None and self.initialPos is not None:
-            painter.setPen(QPen(QColor(*rgbTuple(self.initialPos.color)), 5))
-            print(self.initialPos.color)
+            painter.setPen(QPen(QColor(self.initialPos.color), 5))
+
             painter.drawLine(
                 int(
                     (self.initialPos.getPos()[0] - self.master.camX) * self.master.scale
@@ -310,16 +332,15 @@ class BackGroundGrid(QWidget):
                 self.currentPos[0],
                 self.currentPos[1],
             )
-            
 
 
 class PostBox(QWidget):
     def __init__(self, parent):
-        print("postBox init")
+
         super().__init__()
-        print("super")
+
         self.setParent(parent)
-        print("set parent")
+
         self.master = parent
         self.xPos = 0
         self.yPos = 0
@@ -330,11 +351,10 @@ class PostBox(QWidget):
         self.color = None
         self.editing = True
 
-        print("before making elemtns")
         self.title = QLineEdit(self)
-        print("title")
+
         self.content = QTextEdit(self)
-        print("elements")
+
         self.setFontSize(self.fontSize)
         # self.toggleEdit()
         self.box = QGroupBox()
@@ -344,38 +364,35 @@ class PostBox(QWidget):
             background-color:  rgb(50, 191, 175);
             }"""
         )
-        print("box style")
+
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.title)
         self.layout.addWidget(self.content)
 
         self.box.setLayout(self.layout)
-        print("box")
+
         self.widgetLayout = QVBoxLayout()
         self.widgetLayout.addWidget(self.box)
         self.setLayout(self.widgetLayout)
         self.setMouseTracking(True)
         self.corner = False
         self.disable()
-        print("disable")
+
         self.show()
-        print("show() post box")
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        
         if (
             a0.buttons() == MouseButton.LeftButton
             or a0.buttons() == MouseButton.RightButton
         ):
-            print(
-                a0.buttons() == MouseButton.RightButton,
-                a0.buttons() == MouseButton.MiddleButton,
-                a0.buttons() == MouseButton.LeftButton,
-            )
+           
+           
             self.lastPos = (a0.globalX(), a0.globalY())
             self.raise_()
             self.selectSelf()
-
-        self.master.mousePressEvent(a0)
+        a0.ignore()
+        # self.master.mousePressEvent(QtGui.QMouseEvent(a0.type(), self.master.mapFromGlobal(a0.globalPos()), a0.button(), a0.buttons(),))
 
     def selectSelf(self):
         self.master.selectNewItem(self)
@@ -423,6 +440,7 @@ class PostBox(QWidget):
             self.master.lastColor = color.name()
             self.color = color.name()
             self.scale(self.master.scale)
+            
 
     def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
         def dist(a, b):
@@ -461,18 +479,18 @@ class PostBox(QWidget):
             self.xPos += delta[0]
             self.yPos += delta[1]
             self.master.repositionItem(self)
+            self.master.grid.repaint() 
+            
 
         if not self.editing:
-            self.master.mouseMoveEvent(a0)
+            a0.ignore()
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
-        print(
-            a0.pos()
-        )
+      
         self.corner = False
         self.setCursor(MousePointer.ArrowCursor)
         if a0.button() == MouseButton.RightButton:
-            self.master.mouseReleaseEvent(a0)
+            a0.ignore()
 
     def enable(self):
         self.editing = True
