@@ -2,9 +2,6 @@ from PyQt5 import QtCore, QtGui
 
 from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PyQt5.QtWidgets import (
-    QGraphicsScene,
-    QGraphicsView,
-    QHBoxLayout,
     QLabel,
     QWidget,
     QLineEdit,
@@ -37,6 +34,7 @@ class Main(QWidget):
         self.scale = 1
         self.selectedItem = None
         self.lastPos = None
+        self.index = 0
 
         self.setWindowTitle("YarnBall")
 
@@ -55,6 +53,53 @@ class Main(QWidget):
         self.keys = set()
 
         self.lastColor = None
+        self.parseYarnBall("test.yarnball")
+
+    def parseYarnBall(self, filedir):
+        """
+        id|[connection ids]|hexColor|title|content|x|y|sizeX|sizeY
+        """
+        with open(filedir, "r") as file:
+            idMap = dict()
+            for line in file.readlines():
+                properties = line.strip().split("|")
+                print(properties)
+                if properties[0] in idMap.keys():
+                    raise RuntimeError(f"duplicate key in: {line}")
+                if len(properties) != 9:
+                    raise RuntimeError(
+                        f"incorrectly fomatted line: {line}, should be id|[connection ids]|hexColor|title|content|x|y|sizeX|sizeY"
+                    )
+
+                self.newItem(
+                    int(properties[5]),
+                    int(properties[6]),
+                    int(properties[7]),
+                    int(properties[8]),
+                    properties[3],
+                    properties[4],
+                    properties[2],
+                    int(properties[0]),
+                )
+                idMap[int(properties[0])] = (
+                    self.items[-1],
+                    properties[1][1:-1].split(",") if properties[1][1:-1] != "" else [],
+                )
+
+            print(idMap[1])
+            for value in idMap.values():
+
+                self.connections[value[0]] = [idMap[int(id)][0] for id in value[1]]
+
+            self.index = max(idMap.keys())
+
+    def saveYarnBall(self, filedir):
+        with open(filedir, "w") as file:
+            for item in self.items:
+                file.write(
+                    f"""{item.id}|{str([i.id for i in self.connections[item]])}
+                           |{item.color}|{item.title.toPlainText()}|{item.content.toPlainText()}|{item.xPos}|{item.yPos}|{item.sizeX}|{item.SizeY}\n"""
+                )
 
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         self.grid.resize(self.width(), self.height())
@@ -107,15 +152,13 @@ class Main(QWidget):
         if a0.buttons() == MouseButton.RightButton and self.selectedItem is not None:
             self.grid.drawLine(
                 (
-                    a0.x() ,
-                    a0.y() ,
+                    a0.x(),
+                    a0.y(),
                 )
             )
-            
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
 
-     
         if a0.buttons() == MouseButton.RightButton:
             if self.selectedItem is not None:
                 self.grid.startLine(self.selectedItem)
@@ -126,11 +169,11 @@ class Main(QWidget):
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.grid.stopLine()
-      
+
         if self.selectedItem is not None:
             if a0.button() == MouseButton.RightButton:
                 temp = self.getBoxClicked(a0.pos())
-                if temp is not None: 
+                if temp is not None:
                     self.connections[self.selectedItem].append(temp)
                     self.grid.repaint()
             self.deselectedCurrentItem()
@@ -140,7 +183,7 @@ class Main(QWidget):
         for item in self.items:
             if QtCore.QRect(item.pos(), item.size()).contains(pos):
                 return item
-            
+
     def selectNewItem(self, item):
         if self.selectedItem is not None:
             self.deselectedCurrentItem()
@@ -170,10 +213,19 @@ class Main(QWidget):
             )
 
     def newItem(
-        self, posX=0, posY=0, sizeX=300, sizeY=300, title="", content="", color=""
+        self,
+        posX=0,
+        posY=0,
+        sizeX=300,
+        sizeY=300,
+        title="",
+        content="",
+        color="",
+        id=None,
     ):
 
         item = PostBox(self)
+        item.id = id if id is not None else self.index
         item.xPos = posX
         item.yPos = posY
         item.sizeX = sizeX
@@ -191,6 +243,7 @@ class Main(QWidget):
         self.repositionItem(item)
         item.scale(self.scale)
         self.connections[item] = []
+        self.index += 1
 
     def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.add(a0.key())
@@ -210,8 +263,10 @@ class Main(QWidget):
                 item.scale(self.scale)
             self.reposition()
             self.grid.repaint()
+            self.saveYarnBall("test.yarnball")
 
     def wheelEvent(self, a0: QtGui.QWheelEvent) -> None:
+
         if a0.angleDelta().y() > 0:
             self.scale = min(2.6, self.scale + 0.1)
         else:
@@ -299,22 +354,14 @@ class BackGroundGrid(QWidget):
 
             for item2 in self.master.connections[item1]:
                 painter.drawLine(
-                    int(
-                    (item1.getPos()[0] - self.master.camX) * self.master.scale
-                )
-                + self.size().width() // 2,
-                int(
-                    (item1.getPos()[1] - self.master.camY) * self.master.scale
-                )
-                + self.size().height() // 2,
-                    int(
-                    (item2.getPos()[0] - self.master.camX) * self.master.scale
-                )
-                + self.size().width() // 2,
-                int(
-                    (item2.getPos()[1] - self.master.camY) * self.master.scale
-                )
-                + self.size().height() // 2,
+                    int((item1.getPos()[0] - self.master.camX) * self.master.scale)
+                    + self.size().width() // 2,
+                    int((item1.getPos()[1] - self.master.camY) * self.master.scale)
+                    + self.size().height() // 2,
+                    int((item2.getPos()[0] - self.master.camX) * self.master.scale)
+                    + self.size().width() // 2,
+                    int((item2.getPos()[1] - self.master.camY) * self.master.scale)
+                    + self.size().height() // 2,
                 )
 
         if self.currentPos is not None and self.initialPos is not None:
@@ -381,13 +428,12 @@ class PostBox(QWidget):
         self.show()
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-        
+
         if (
             a0.buttons() == MouseButton.LeftButton
             or a0.buttons() == MouseButton.RightButton
         ):
-           
-           
+
             self.lastPos = (a0.globalX(), a0.globalY())
             self.raise_()
             self.selectSelf()
@@ -440,7 +486,6 @@ class PostBox(QWidget):
             self.master.lastColor = color.name()
             self.color = color.name()
             self.scale(self.master.scale)
-            
 
     def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
         def dist(a, b):
@@ -479,14 +524,13 @@ class PostBox(QWidget):
             self.xPos += delta[0]
             self.yPos += delta[1]
             self.master.repositionItem(self)
-            self.master.grid.repaint() 
-            
+            self.master.grid.repaint()
 
         if not self.editing:
             a0.ignore()
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
-      
+
         self.corner = False
         self.setCursor(MousePointer.ArrowCursor)
         if a0.button() == MouseButton.RightButton:
