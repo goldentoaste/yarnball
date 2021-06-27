@@ -80,7 +80,7 @@ class Main(QWidget):
             for line in file.readlines():
                 properties = [l.strip() for l in line.split("|")]
 
-                if properties[0] in idMap.keys():
+                if int(properties[0]) in idMap.keys():
                     raise RuntimeError(f"duplicate key in: {line}")
                 if len(properties) != 9:
                     raise RuntimeError(
@@ -106,7 +106,8 @@ class Main(QWidget):
                 self.connections[value[0]] = [idMap[int(id)][0] for id in value[1]]
 
             if len(idMap) > 0:
-                self.index = max(idMap.keys())
+                self.index = max(idMap.keys()) + 1
+                
 
     @pyqtSlot()
     def saveYarnBall(self, filedir):
@@ -122,6 +123,7 @@ class Main(QWidget):
             msg.exec()
             
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
+        self.reposition()
         self.grid.resize(self.width(), self.height())
 
     def removeItem(self):
@@ -160,7 +162,7 @@ class Main(QWidget):
 
     def mouseMoveEvent(self, a0: QMouseEvent) -> None:
 
-        if a0.buttons() == MouseButton.MiddleButton:
+        if a0.buttons() == MouseButton.MiddleButton or a0.buttons()==  MouseButton.LeftButton:
             # update widgets as mouse is moving
             if self.selectedItem is not None:
                 self.deselectedCurrentItem()
@@ -211,7 +213,7 @@ class Main(QWidget):
                 self.grid.startLine(self.selectedItem)
             else:
                 self.grid.stopLine()
-        if a0.buttons() == MouseButton.MiddleButton:
+        if a0.buttons() == MouseButton.MiddleButton or a0.buttons()==  MouseButton.LeftButton:
             self.lastPos = (a0.globalX(), a0.globalY())
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
