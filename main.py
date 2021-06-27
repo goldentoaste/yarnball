@@ -111,10 +111,9 @@ class Main(QWidget):
     @pyqtSlot()
     def saveYarnBall(self, filedir):
         with open(filedir, "w") as file:
-
             for item in self.items:
                 file.write(
-                    f"""{item.id}|{str([i.id for i in self.connections[item]]).strip()}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
+                    f"""{item.id}|{str([i.id for i in self.connections[item] if i.isVisible()]).strip()}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
                 )
             msg = QMessageBox()
             msg.setText(f"File saved as : {self.filedir}")
@@ -456,16 +455,17 @@ class BackGroundGrid(QWidget):
             painter.setPen(QPen(QColor(item1.color), 5))
 
             for item2 in self.master.connections[item1]:
-                painter.drawLine(
-                    int((item1.getPos()[0] - self.master.camX) * self.master.scale)
-                    + self.size().width() // 2,
-                    int((item1.getPos()[1] - self.master.camY) * self.master.scale)
-                    + self.size().height() // 2,
-                    int((item2.getPos()[0] - self.master.camX) * self.master.scale)
-                    + self.size().width() // 2,
-                    int((item2.getPos()[1] - self.master.camY) * self.master.scale)
-                    + self.size().height() // 2,
-                )
+                if item2.isVisible():
+                    painter.drawLine(
+                        int((item1.getPos()[0] - self.master.camX) * self.master.scale)
+                        + self.size().width() // 2,
+                        int((item1.getPos()[1] - self.master.camY) * self.master.scale)
+                        + self.size().height() // 2,
+                        int((item2.getPos()[0] - self.master.camX) * self.master.scale)
+                        + self.size().width() // 2,
+                        int((item2.getPos()[1] - self.master.camY) * self.master.scale)
+                        + self.size().height() // 2,
+                    )
 
         if self.currentPos is not None and self.initialPos is not None:
             painter.setPen(QPen(QColor(self.initialPos.color), 5))
