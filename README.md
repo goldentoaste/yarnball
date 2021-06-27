@@ -2,7 +2,7 @@
 A python program for organizing ideas, planning, brain storming etc.  
 All requirements and the program itself are packaged with pyinstaller and can be downloaded ./dist or the Releases section. 
 
-![demo](demo.png)
+![demo](./demo.png)
 
 ##Controls
 - Middle click or left click and drag background to move camera/move background.
