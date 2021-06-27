@@ -1,8 +1,14 @@
+import os
 from PyQt5 import QtCore, QtGui
-
+from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PyQt5.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
     QLabel,
+    QMessageBox,
+    QPushButton,
     QWidget,
     QLineEdit,
     QTextEdit,
@@ -12,7 +18,7 @@ from PyQt5.QtWidgets import (
     QApplication,
 )
 import sys
-
+from math import sqrt
 
 MouseButton = QtCore.Qt.MouseButton
 MousePointer = QtCore.Qt.CursorShape
@@ -22,17 +28,22 @@ def rgbTuple(rgb):
     return [int(i) for i in rgb[4:-1].split(",")]
 
 
+def pointToLineDistance(l1: QtCore.QPoint, l2: QtCore.QPoint, p: QtCore.QPoint):
+
+    return abs(
+        (l2.x() - l1.x()) * (l1.y() - p.y()) - (l1.x() - p.x()) * (l2.y() - l1.y())
+    ) / (sqrt((l2.x() - l1.x()) ** 2 + (l2.y() - l1.y()) ** 2))
+
+
 class Main(QWidget):
-    def __init__(self):
+    def __init__(self, filedir = None):
 
         super().__init__()
-        self.init()
-
-    def init(self):
         self.camX = 0
         self.camY = 0
         self.scale = 1
         self.selectedItem = None
+        self.selectLine = None
         self.lastPos = None
         self.index = 0
 
@@ -53,7 +64,12 @@ class Main(QWidget):
         self.keys = set()
 
         self.lastColor = None
-        self.parseYarnBall("test.yarnball")
+        self.filedir = filedir
+        
+        if self.filedir is not None:
+            self.parseYarnBall(self.filedir)
+
+   
 
     def parseYarnBall(self, filedir):
         """
@@ -62,8 +78,8 @@ class Main(QWidget):
         with open(filedir, "r") as file:
             idMap = dict()
             for line in file.readlines():
-                properties = line.strip().split("|")
-                print(properties)
+                properties = [l.strip() for l in line.split("|")]
+
                 if properties[0] in idMap.keys():
                     raise RuntimeError(f"duplicate key in: {line}")
                 if len(properties) != 9:
@@ -86,41 +102,50 @@ class Main(QWidget):
                     properties[1][1:-1].split(",") if properties[1][1:-1] != "" else [],
                 )
 
-            print(idMap[1])
             for value in idMap.values():
-
                 self.connections[value[0]] = [idMap[int(id)][0] for id in value[1]]
 
-            self.index = max(idMap.keys())
+            if len(idMap) > 0:
+                self.index = max(idMap.keys())
 
+    @pyqtSlot()
     def saveYarnBall(self, filedir):
         with open(filedir, "w") as file:
+
             for item in self.items:
                 file.write(
-                    f"""{item.id}|{str([i.id for i in self.connections[item]])}
-                           |{item.color}|{item.title.toPlainText()}|{item.content.toPlainText()}|{item.xPos}|{item.yPos}|{item.sizeX}|{item.SizeY}\n"""
+                    f"""{item.id}|{str([i.id for i in self.connections[item]]).strip()}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
                 )
-
+            msg = QMessageBox()
+            msg.setText(f"File saved as : {self.filedir}")
+            msg.setWindowTitle("File saved.")
+            msg.show()
+            msg.exec()
+            
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         self.grid.resize(self.width(), self.height())
 
     def removeItem(self):
+        
         item = self.selectedItem
         if self.isVisible() and item is not None:
             item.hide()
             self.old.append(item)
             self.items.remove(item)
             self.selectedItem = None
-            return True
-        return False
 
+        if self.selectLine is not None:
+            self.connections[self.selectLine[0]].remove(self.selectLine[1])    
+            self.selectLine = None
+        self.grid.repaint()
+        
     def undoRemove(self):
         if self.isVisible() and len(self.old) > 0:
             item = self.old.pop()
             self.items.append(item)
             item.show()
-            return True
-        return False
+            self.grid.repaint()
+            
 
     def reposition(self):
         for item in self.items:
@@ -158,7 +183,30 @@ class Main(QWidget):
             )
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-
+        self.selectLine = None
+        if a0.button() == MouseButton.LeftButton:
+            dis = 400
+            pair = None
+            for root, children in self.connections.items():
+                for item in children:
+                    if root.isVisible() and item.isVisible():
+                        d = pointToLineDistance(
+                            root.pos()
+                            + QtCore.QPoint(
+                                root.size().width() // 2, root.size().height() // 2
+                            ),
+                            item.pos()
+                            + QtCore.QPoint(
+                                item.size().width() // 2, item.size().height() // 2
+                            ),
+                            a0.pos(),
+                        )
+                        if d < 20 and d < dis:
+                            dis = d
+                            pair = (root, item)
+                            
+            if pair is not None:
+                self.selectLine = pair
         if a0.buttons() == MouseButton.RightButton:
             if self.selectedItem is not None:
                 self.grid.startLine(self.selectedItem)
@@ -169,11 +217,11 @@ class Main(QWidget):
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.grid.stopLine()
-
+        
         if self.selectedItem is not None:
             if a0.button() == MouseButton.RightButton:
                 temp = self.getBoxClicked(a0.pos())
-                if temp is not None:
+                if temp is not None and temp is not self.selectedItem:
                     self.connections[self.selectedItem].append(temp)
                     self.grid.repaint()
             self.deselectedCurrentItem()
@@ -247,8 +295,9 @@ class Main(QWidget):
 
     def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.add(a0.key())
-        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_W}:
+        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_W} or self.keys == {QtCore.Qt.Key.Key_Delete}:
             self.removeItem()
+            
         elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_Z}:
             self.undoRemove()
         if self.keys == {QtCore.Qt.Key.Key_Equal}:
@@ -263,7 +312,53 @@ class Main(QWidget):
                 item.scale(self.scale)
             self.reposition()
             self.grid.repaint()
-            self.saveYarnBall("test.yarnball")
+        
+        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_S}:
+            if self.filedir is not None:
+                self.saveYarnBall(self.filedir)
+            else:
+                self.askToSave()
+        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_O}:
+            self.askToOpen()
+        
+        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_N}:
+            s = Main()
+        
+        if self.keys == {QtCore.Qt.Key.Key_Space}:
+            msg = QDialog(None)
+            msg.setWindowFlags(msg.windowFlags() & ~ Qt.WindowType.WindowContextHelpButtonHint)            
+            layout = QHBoxLayout()
+            saveBt = QPushButton('Save')
+            saveBt.clicked.connect(lambda: (self.saveYarnBall() if self.filedir is not None else self.askToSave(), msg.close()))
+            saveAsBt = QPushButton("Save as")
+            saveAsBt.clicked.connect(lambda: (self.askToSave(), msg.close(), print('third')))
+            openBt = QPushButton('Open')
+            openBt.clicked.connect(lambda: (self.askToOpen(), msg.close()))
+            newBt = QPushButton('New')
+            newBt.clicked.connect(lambda : (Main(), msg.close()))
+            layout.addWidget(saveAsBt)   
+            layout.addWidget(saveBt)   
+            layout.addWidget(openBt)   
+            layout.addWidget(newBt)    
+            msg.setLayout(layout)
+            msg.exec()
+            
+    @pyqtSlot()      
+    def askToOpen(self):
+        filename, _ = QFileDialog.getOpenFileName(self, 'Open a file', os.getenv('HOME'), "Yarnball file (*.yarnball *.txt)")
+        if filename:
+            s = Main(filedir = filename)
+            if not self.items and not self.old:
+                self.close()
+    
+    @pyqtSlot()
+    def askToSave(self):
+        filename, _ = QFileDialog.getSaveFileName(self, 'Open a file', os.getenv('HOME'), "Yarnball file (*.yarnball *.txt)")
+        if filename:
+            self.filedir = filename
+            self.saveYarnBall(filename)
+    
+            
 
     def wheelEvent(self, a0: QtGui.QWheelEvent) -> None:
 
@@ -286,7 +381,7 @@ class BackGroundGrid(QWidget):
 
         self.gridSize = 30
         self.minSize = 25
-        self.maxSize = 65
+        self.maxSize = 75
         self.setParent(parent)
         self.master = parent
         self.initialPos = None
@@ -309,11 +404,9 @@ class BackGroundGrid(QWidget):
         self.repaint()
 
     def paintEvent(self, a0: QtGui.QPaintEvent) -> None:
-        scaledGridSize = self.gridSize * self.master.scale
-        if scaledGridSize < self.minSize:
-            scaledGridSize = scaledGridSize - self.minSize + self.maxSize
-        elif scaledGridSize > self.maxSize:
-            scaledGridSize = scaledGridSize - self.maxSize + self.minSize
+        scaledGridSize = self.minSize + (self.master.scale * 80) % (
+            self.maxSize - self.minSize
+        )
 
         rows = int((self.height() / scaledGridSize) + 1) + 2
         cols = 2 + int((self.width() / scaledGridSize) + 1)
@@ -346,6 +439,16 @@ class BackGroundGrid(QWidget):
                 yMin,
                 int(c * scaledGridSize - xOffset),
                 yMax,
+            )
+
+        if self.master.selectLine is not None:
+            painter.setPen(QPen(QColor("#ff8888"), 13))
+            pair = self.master.selectLine
+            painter.drawLine(
+                pair[0].x() + pair[0].width() // 2,
+                pair[0].y() + pair[0].height() // 2,
+                pair[1].x() + pair[1].width() // 2,
+                pair[1].y() + pair[1].height() // 2,
             )
 
         # draw foreground lines:
@@ -437,7 +540,8 @@ class PostBox(QWidget):
             self.lastPos = (a0.globalX(), a0.globalY())
             self.raise_()
             self.selectSelf()
-        a0.ignore()
+        if a0.button() != MouseButton.LeftButton:
+            a0.ignore()
         # self.master.mousePressEvent(QtGui.QMouseEvent(a0.type(), self.master.mapFromGlobal(a0.globalPos()), a0.button(), a0.buttons(),))
 
     def selectSelf(self):
@@ -475,6 +579,12 @@ class PostBox(QWidget):
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
         if a0.buttons() == MouseButton.LeftButton:
             self.enable()
+            self.box.setStyleSheet(
+            f"""QGroupBox {{
+        background-color:  {self.color};
+        border:5px solid {self.color};
+        }}"""
+        )
 
         if a0.buttons() == MouseButton.RightButton:
             color = QColorDialog.getColor()
@@ -517,6 +627,7 @@ class PostBox(QWidget):
             self.resize(
                 int(self.sizeX * self.master.scale), int(self.sizeY * self.master.scale)
             )
+            self.master.repositionItem(self)
             return
 
         if a0.buttons() == MouseButton.LeftButton and not self.corner:
@@ -551,7 +662,6 @@ class PostBox(QWidget):
 
 
 if __name__ == "__main__":
-
     app = QApplication(sys.argv)
-    m = Main()
+    m = Main(filedir = sys.argv[1] if len(sys.argv) == 2 else None)
     sys.exit(app.exec_())
