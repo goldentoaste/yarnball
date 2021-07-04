@@ -1,7 +1,7 @@
 import os
 import re
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtCore import QPoint, Qt, pyqtSlot
 from PyQt5.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPen, QTextLine
 from PyQt5.QtWidgets import (
     QDialog,
@@ -29,6 +29,10 @@ connectionPattern = re.compile('^\d+\|\d+\|#[a-fA-F0-9]{6}\|[\s\S]*$')
 def rgbTuple(rgb):
     return [int(i) for i in rgb[4:-1].split(",")]
 
+
+def pointInLineSeg(l1: QtCore.QPoint, l2: QtCore.QPoint, p: QtCore.QPoint):
+    
+    return QPoint.dotProduct((l1 - l2),(p-l2) )>= 0 and QPoint.dotProduct((l2 - l1),(p-l1)) >=0
 
 def pointToLineDistance(l1: QtCore.QPoint, l2: QtCore.QPoint, p: QtCore.QPoint):
 
@@ -72,7 +76,13 @@ class Main(QWidget):
             self.parseYarnBall(self.filedir)
 
     def closeEvent(self, a0: QtGui.QCloseEvent) -> None:
-        
+        if not self.items:
+            a0.accept()
+            return
+        if self.filedir is not None:
+            with open(self.filedir) as file:
+                if file.read() == self.getSaveText():
+                    return 
         msg = QMessageBox(self)
         msg.setText('There might be unsaved work. ')
         msg.setInformativeText('Are you want to exit?')
@@ -102,7 +112,6 @@ class Main(QWidget):
             for line in file.readlines():
                 if postPattern.match(line):
                     p = line.split('|')
-                    print(p[3].encode())
                     idMap[int(p[0])] = self.newItem(int(p[4]), int(p[5]), int(p[6]),int(p[7]), p[2], p[3].encode('utf-8').decode('unicode_escape'),p[1], id=int(p[0]))
                 elif connectionPattern.match(line):
                     connections.append(line.split('|'))
@@ -124,19 +133,23 @@ class Main(QWidget):
     @pyqtSlot()
     def saveYarnBall(self, filedir):
         with open(filedir, "w") as file:
-            for item in self.items:
-                file.write(
-                    f"""{item.id}|{item.color}|{item.title.text()}|{str(item.content.toPlainText().encode('unicode_escape').decode('utf-8'))}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
-                )
-                print(item.content.toPlainText())
-            for pair, value in self.connections.items():
-                file.write(f"{pair[0].id}|{pair[1].id}|{value[0]}|{value[1].text()}\n")
+            file.write(self.getSaveText())
             msg = QMessageBox()
             msg.setText(f"File saved as : {self.filedir}")
             msg.setWindowTitle("File saved.")
             msg.show()
             msg.exec()
+
+
+    def getSaveText(self):
+        t = ""
+        for item in self.items:
+            t+= f"""{item.id}|{item.color}|{item.title.text()}|{str(item.content.toPlainText().encode('unicode_escape').decode('utf-8'))}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
             
+        for pair, value in self.connections.items():
+            t+=f"{pair[0].id}|{pair[1].id}|{value[0]}|{value[1].text()}\n"
+        return t
+
     def resizeEvent(self, a0: QtGui.QResizeEvent) -> None:
         self.reposition()
         self.grid.resize(self.width(), self.height())
@@ -180,7 +193,6 @@ class Main(QWidget):
             label.setVisible(False)
             return
         elif len(label.text()) > 0:
-            print(label.text().encode())
             label.setVisible(True)
         
         if not label.isVisible():
@@ -211,7 +223,8 @@ class Main(QWidget):
             if self.selectedItem is not None:
                 self.deselectedCurrentItem()
                 self.selectedItem = None
-
+            if self.lastPos is None:
+                return
             self.camX -= (a0.globalX() - self.lastPos[0]) / self.scale
             self.camY -= (a0.globalY() - self.lastPos[1]) / self.scale
 
@@ -233,13 +246,11 @@ class Main(QWidget):
         
         if a0.button() == MouseButton.LeftButton:
             
-        
             dis = 400
             pair = None
             for points in self.connections.keys():
                 if points[1].isVisible() and points[0].isVisible():
-                    d = pointToLineDistance(
-                            points[0].pos()
+                    vars = (points[0].pos()
                             + QtCore.QPoint(
                                 points[0].size().width() // 2, points[0].size().height() // 2
                             ),
@@ -247,9 +258,11 @@ class Main(QWidget):
                             + QtCore.QPoint(
                                 points[1].size().width() // 2, points[1].size().height() // 2
                             ),
-                            a0.pos(),
+                            a0.pos(),)
+                    d = pointToLineDistance(
+                            *vars
                         )
-                    if d < 20 and d < dis:
+                    if d < 20 and d < dis and pointInLineSeg(*vars):
                         dis = d
                         pair = points
 
@@ -296,8 +309,6 @@ class Main(QWidget):
         self.selectedItem.scale(self.scale)
 
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
-
-        
         if a0.buttons() == MouseButton.LeftButton:
             if self.selectLine is not None:
                 msg = QDialog(None)
@@ -306,6 +317,8 @@ class Main(QWidget):
                 layout = QHBoxLayout()
                 label1 = QLabel('Label text: ')
                 text = QLineEdit()
+                text.setPlaceholderText('label text')
+                text.setText(self.connections[self.selectLine][1].text())
                 color = QPushButton()
                 ok = QPushButton('Ok')
                 colorResult = []
@@ -333,8 +346,8 @@ class Main(QWidget):
                 (a0.y() - self.size().height() / 2) / self.scale + self.camY,
                 300,
                 300,
-                "Title",
-                "Content",
+                "",
+                "",
                 self.lastColor if self.lastColor is not None else "#37A0D2",
             )
 
@@ -379,17 +392,9 @@ class Main(QWidget):
         elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_Z}:
             self.undoRemove()
         elif self.keys == {QtCore.Qt.Key.Key_Equal}:
-            self.scale = min(2.6, self.scale + 0.2)
-            for item in self.items:
-                item.scale(self.scale)
-            self.reposition()
-            self.grid.repaint()
+            self.scaleCanvas(0.2)
         elif self.keys == {QtCore.Qt.Key.Key_Minus}:
-            self.scale = max(0.4, self.scale - 0.2)
-            for item in self.items:
-                item.scale(self.scale)
-            self.reposition()
-            self.grid.repaint()
+            self.scaleCanvas(-0.2)
         
         elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_S}:
             if self.filedir is not None:
@@ -441,17 +446,22 @@ class Main(QWidget):
             self.saveYarnBall(filename)
     
             
-
-    def wheelEvent(self, a0: QtGui.QWheelEvent) -> None:
-
-        if a0.angleDelta().y() > 0:
-            self.scale = min(2.6, self.scale + 0.1)
-        else:
-            self.scale = max(0.4, self.scale - 0.1)
+    def scaleCanvas(self, delta):
+        self.scale = max(0.4,min(2.6, self.scale + delta))
         for item in self.items:
             item.scale(self.scale)
         self.reposition()
         self.grid.repaint()
+        
+        for item in self.connections.values():
+            item[1].updateText(item[1].text(), item[0])
+    def wheelEvent(self, a0: QtGui.QWheelEvent) -> None:
+
+        if a0.angleDelta().y() > 0:
+            self.scaleCanvas(0.1)
+        else:
+            self.scaleCanvas(-0.1)
+        
 
     def keyReleaseEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.clear()
@@ -584,9 +594,9 @@ class PostBox(QWidget):
         self.editing = True
 
         self.title = QLineEdit(self)
-
+        self.title.setPlaceholderText('Title')
         self.content = QTextEdit(self)
-
+        self.content.setPlaceholderText('Content')
         self.setFontSize(self.fontSize)
         # self.toggleEdit()
         self.box = QGroupBox()
