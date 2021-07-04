@@ -1,7 +1,8 @@
 import os
+import re
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
+from PyQt5.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPen, QTextLine
 from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -22,7 +23,8 @@ from math import sqrt
 
 MouseButton = QtCore.Qt.MouseButton
 MousePointer = QtCore.Qt.CursorShape
-
+postPattern = re.compile('^\d+\|#[a-fA-F0-9]{6}\|[\s\S]*\|[\s\S]*\|-?\d+\|-?\d+\|-?\d+\|-?\d+')
+connectionPattern = re.compile('^\d+\|\d+\|#[a-fA-F0-9]{6}\|[\s\S]*$')
 
 def rgbTuple(rgb):
     return [int(i) for i in rgb[4:-1].split(",")]
@@ -73,49 +75,40 @@ class Main(QWidget):
 
     def parseYarnBall(self, filedir):
         """
-        id|[connection ids]|hexColor|title|content|x|y|sizeX|sizeY
+        id|hexColor|title|content|x|y|sizeX|sizeY
+        id1|id2|#hexcolor|text
         """
         with open(filedir, "r") as file:
             idMap = dict()
+            connections = []
             for line in file.readlines():
-                properties = [l.strip() for l in line.split("|")]
+                if postPattern.match(line):
+                    p = line.split('|')
+                    idMap[int(p[0])] = self.newItem(int(p[4]), int(p[5]), int(p[6]),int(p[7]), p[2], p[3],p[1], id=int(p[0]))
+                elif connectionPattern.match(line):
+                    connections.append(line.split('|'))
+                else:
+                    raise RuntimeError(f'Line "{line}" in file "{filedir}" has bad formatting.')
 
-                if int(properties[0]) in idMap.keys():
-                    raise RuntimeError(f"duplicate key in: {line}")
-                if len(properties) != 9:
-                    raise RuntimeError(
-                        f"incorrectly fomatted line: {line}, should be id|[connection ids]|hexColor|title|content|x|y|sizeX|sizeY"
-                    )
-
-                self.newItem(
-                    int(properties[5]),
-                    int(properties[6]),
-                    int(properties[7]),
-                    int(properties[8]),
-                    properties[3],
-                    properties[4],
-                    properties[2],
-                    int(properties[0]),
-                )
-                idMap[int(properties[0])] = (
-                    self.items[-1],
-                    properties[1][1:-1].split(",") if properties[1][1:-1] != "" else [],
-                )
-
-            for value in idMap.values():
-                self.connections[value[0]] = [idMap[int(id)][0] for id in value[1]]
+            for item in connections:
+                p = PostLabel(self)
+                p.updateText(item[3], item[2])
+                self.connections[idMap[int(item[0])], idMap[int(item[1])]] = (item[2], p) 
 
             if len(idMap) > 0:
                 self.index = max(idMap.keys()) + 1
-                
+            self.reposition()
+    
 
     @pyqtSlot()
     def saveYarnBall(self, filedir):
         with open(filedir, "w") as file:
             for item in self.items:
                 file.write(
-                    f"""{item.id}|{str([i.id for i in self.connections[item] if i.isVisible()]).strip()}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
+                    f"""{item.id}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
                 )
+            for pair, value in self.connections.items():
+                file.write(f"{pair[0].id}|{pair[1].id}|{value[0]}|{value[1].text()}")
             msg = QMessageBox()
             msg.setText(f"File saved as : {self.filedir}")
             msg.setWindowTitle("File saved.")
@@ -133,12 +126,16 @@ class Main(QWidget):
             item.hide()
             self.old.append(item)
             self.items.remove(item)
-            self.selectedItem = None
+            self.deselectedCurrentItem()
+            
 
         if self.selectLine is not None:
-            self.connections[self.selectLine[0]].remove(self.selectLine[1])    
+            self.connections[self.selectLine][1].destroy()
+            self.connections.pop(self.selectLine)
             self.selectLine = None
         self.grid.repaint()
+        self.repositionAllItemLabel(item)
+    
         
     def undoRemove(self):
         if self.isVisible() and len(self.old) > 0:
@@ -146,12 +143,34 @@ class Main(QWidget):
             self.items.append(item)
             item.show()
             self.grid.repaint()
-            
+            self.repositionItem(item)
+            self.repositionAllItemLabel(item)
 
     def reposition(self):
         for item in self.items:
             self.repositionItem(item)
-
+            
+        for pair, values in self.connections.items():
+            self.repositionLabel(pair, values[1])
+    
+    def repositionLabel(self, pair, label):
+        if not pair[0].isVisible() or not pair[1].isVisible():
+            label.setVisible(False)
+            return
+        elif label.text() != '':
+            label.setVisible(True)
+        if not label.isVisible():
+            return
+        avgx = (pair[0].pos().x() + pair[1].pos().x() + pair[1].width()/2 + pair[0].width()/ 2) / 2
+        avgy = (pair[0].pos().y() + pair[1].pos().y() + pair[0].height() / 2 + pair[1].height()/2) / 2
+        label.move(int(avgx - label.width()/2), int(avgy - label.height()/2))
+        
+    
+    def repositionAllItemLabel(self, item):
+        for pair, values in self.connections.items():
+            if (not pair[1] == item and not pair[0] == item): continue
+            self.repositionLabel(pair, values[1])
+            
     def repositionItem(self, item):
         item.move(
             int((item.getPos()[0] - self.camX - item.sizeX // 2) * self.scale)
@@ -159,6 +178,7 @@ class Main(QWidget):
             int((item.getPos()[1] - self.camY - item.sizeY // 2) * self.scale)
             + self.size().height() // 2,
         )
+        self.repositionAllItemLabel(item)
 
     def mouseMoveEvent(self, a0: QMouseEvent) -> None:
 
@@ -174,6 +194,7 @@ class Main(QWidget):
             self.lastPos = (a0.globalX(), a0.globalY())
             self.reposition()
             self.grid.repaint()
+            
 
         if a0.buttons() == MouseButton.RightButton and self.selectedItem is not None:
             self.grid.drawLine(
@@ -185,27 +206,29 @@ class Main(QWidget):
 
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.selectLine = None
+        
         if a0.button() == MouseButton.LeftButton:
+            
+        
             dis = 400
             pair = None
-            for root, children in self.connections.items():
-                for item in children:
-                    if root.isVisible() and item.isVisible():
-                        d = pointToLineDistance(
-                            root.pos()
+            for points in self.connections.keys():
+                if points[1].isVisible() and points[0].isVisible():
+                    d = pointToLineDistance(
+                            points[0].pos()
                             + QtCore.QPoint(
-                                root.size().width() // 2, root.size().height() // 2
+                                points[0].size().width() // 2, points[0].size().height() // 2
                             ),
-                            item.pos()
+                            points[1].pos()
                             + QtCore.QPoint(
-                                item.size().width() // 2, item.size().height() // 2
+                                points[1].size().width() // 2, points[1].size().height() // 2
                             ),
                             a0.pos(),
                         )
-                        if d < 20 and d < dis:
-                            dis = d
-                            pair = (root, item)
-                            
+                    if d < 20 and d < dis:
+                        dis = d
+                        pair = points
+
             if pair is not None:
                 self.selectLine = pair
         if a0.buttons() == MouseButton.RightButton:
@@ -218,12 +241,12 @@ class Main(QWidget):
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.grid.stopLine()
-        
+        self.lastPos = None
         if self.selectedItem is not None:
             if a0.button() == MouseButton.RightButton:
                 temp = self.getBoxClicked(a0.pos())
                 if temp is not None and temp is not self.selectedItem:
-                    self.connections[self.selectedItem].append(temp)
+                    self.connections[(self.selectedItem, temp)] = (self.selectedItem.color, PostLabel(self))
                     self.grid.repaint()
             self.deselectedCurrentItem()
             self.selectedItem = None
@@ -250,8 +273,38 @@ class Main(QWidget):
 
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
 
+        
         if a0.buttons() == MouseButton.LeftButton:
-            self.newItem(
+            if self.selectLine is not None:
+                msg = QDialog(None)
+                msg.setWindowFlags(msg.windowFlags() &~ Qt.WindowType.WindowContextHelpButtonHint)
+                
+                layout = QHBoxLayout()
+                label1 = QLabel('Label text: ')
+                text = QLineEdit()
+                color = QPushButton()
+                ok = QPushButton('Ok')
+                colorResult = []
+                color.clicked.connect(lambda: (colorResult.append( QColorDialog.getColor()), 
+                                               color.setStyleSheet(f'background-color:{colorResult[0].name()}') if colorResult[0].isValid() else None
+                                               ))
+                color.setStyleSheet(f'background-color:{self.connections[self.selectLine][0]}')
+                text.returnPressed.connect(lambda: msg.close())
+                ok.clicked.connect(lambda: msg.close())
+                layout.addWidget(label1)
+                layout.addWidget(text)
+                layout.addWidget(color)
+                layout.addWidget(ok)
+                
+                msg.setLayout(layout)
+                msg.exec()
+            
+                self.connections[self.selectLine][1].updateText(text.text(), colorResult[0].name() if len(colorResult) > 0 and colorResult[0].isValid() else self.connections[self.selectLine][0])
+                self.repositionLabel(self.selectLine, self.connections[self.selectLine][1])
+                self.connections[self.selectLine] = (colorResult[0].name() if len(colorResult) > 0 and colorResult[0].isValid() else self.connections[self.selectLine][0], self.connections[self.selectLine][1])
+                self.grid.repaint()
+            else: 
+                self.newItem(
                 (a0.x() - self.size().width() / 2) / self.scale + self.camX,
                 (a0.y() - self.size().height() / 2) / self.scale + self.camY,
                 300,
@@ -291,8 +344,8 @@ class Main(QWidget):
         self.items.append(item)
         self.repositionItem(item)
         item.scale(self.scale)
-        self.connections[item] = []
         self.index += 1
+        return item
 
     def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
         self.keys.add(a0.key())
@@ -301,38 +354,38 @@ class Main(QWidget):
             
         elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_Z}:
             self.undoRemove()
-        if self.keys == {QtCore.Qt.Key.Key_Equal}:
+        elif self.keys == {QtCore.Qt.Key.Key_Equal}:
             self.scale = min(2.6, self.scale + 0.2)
             for item in self.items:
                 item.scale(self.scale)
             self.reposition()
             self.grid.repaint()
-        if self.keys == {QtCore.Qt.Key.Key_Minus}:
+        elif self.keys == {QtCore.Qt.Key.Key_Minus}:
             self.scale = max(0.4, self.scale - 0.2)
             for item in self.items:
                 item.scale(self.scale)
             self.reposition()
             self.grid.repaint()
         
-        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_S}:
+        elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_S}:
             if self.filedir is not None:
                 self.saveYarnBall(self.filedir)
             else:
                 self.askToSave()
-        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_O}:
+        elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_O}:
             self.askToOpen()
         
-        if self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_N}:
+        elif self.keys == {QtCore.Qt.Key.Key_Control, QtCore.Qt.Key.Key_N}:
             s = Main()
         
-        if self.keys == {QtCore.Qt.Key.Key_Space}:
+        elif self.keys == {QtCore.Qt.Key.Key_Space}:
             msg = QDialog(None)
             msg.setWindowFlags(msg.windowFlags() & ~ Qt.WindowType.WindowContextHelpButtonHint)            
             layout = QHBoxLayout()
             saveBt = QPushButton('Save')
             saveBt.clicked.connect(lambda: (self.saveYarnBall() if self.filedir is not None else self.askToSave(), msg.close()))
             saveAsBt = QPushButton("Save as")
-            saveAsBt.clicked.connect(lambda: (self.askToSave(), msg.close(), print('third')))
+            saveAsBt.clicked.connect(lambda: (self.askToSave(), msg.close()))
             openBt = QPushButton('Open')
             openBt.clicked.connect(lambda: (self.askToOpen(), msg.close()))
             newBt = QPushButton('New')
@@ -343,6 +396,10 @@ class Main(QWidget):
             layout.addWidget(newBt)    
             msg.setLayout(layout)
             msg.exec()
+        else: 
+            return
+        
+        self.keys.clear()
             
     @pyqtSlot()      
     def askToOpen(self):
@@ -453,22 +510,21 @@ class BackGroundGrid(QWidget):
             )
 
         # draw foreground lines:
-        for item1 in self.master.items:
-            painter.setPen(QPen(QColor(item1.color), 5))
-
-            for item2 in self.master.connections[item1]:
-                if item2.isVisible():
-                    painter.drawLine(
-                        int((item1.getPos()[0] - self.master.camX) * self.master.scale)
+    
+        for pair, values in self.master.connections.items():
+            painter.setPen(QPen(QColor(values[0]), 5))
+            if pair[0].isVisible() and pair[1].isVisible():
+                painter.drawLine(
+                        int((pair[0].getPos()[0] - self.master.camX) * self.master.scale)
                         + self.size().width() // 2,
-                        int((item1.getPos()[1] - self.master.camY) * self.master.scale)
+                        int((pair[0].getPos()[1] - self.master.camY) * self.master.scale)
                         + self.size().height() // 2,
-                        int((item2.getPos()[0] - self.master.camX) * self.master.scale)
+                        int((pair[1].getPos()[0] - self.master.camX) * self.master.scale)
                         + self.size().width() // 2,
-                        int((item2.getPos()[1] - self.master.camY) * self.master.scale)
+                        int((pair[1].getPos()[1] - self.master.camY) * self.master.scale)
                         + self.size().height() // 2,
                     )
-
+                
         if self.currentPos is not None and self.initialPos is not None:
             painter.setPen(QPen(QColor(self.initialPos.color), 5))
 
@@ -555,6 +611,8 @@ class PostBox(QWidget):
             }}"""
         )
         self.scale(self.master.scale)
+        self.master.selectLine = None
+        self.master.grid.repaint()
 
     def setFontSize(self, pts):
         self.title.setStyleSheet(
@@ -638,8 +696,8 @@ class PostBox(QWidget):
             self.yPos += delta[1]
             self.master.repositionItem(self)
             self.master.grid.repaint()
-
-        if not self.editing:
+            
+        if a0.buttons() != MouseButton.LeftButton:
             a0.ignore()
 
     def mouseReleaseEvent(self, a0: QtGui.QMouseEvent) -> None:
@@ -663,6 +721,25 @@ class PostBox(QWidget):
         return (self.xPos, self.yPos)
 
 
+class PostLabel(QLabel):
+    
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.hide()
+    def updateText(self, text, color):
+    
+        self.setStyleSheet(f"border :4px solid {color};font-size: {int(15 * self.parent().scale)}px; color:{color};background-color: #ebebeb;font-family: Comic Sans MS;")
+        self.setText(text)
+        self.adjustSize()
+        
+        if len(text) == 0 or text is None:
+            self.hide()
+        else:
+            self.show()
+        
+        
+        
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     m = Main(filedir = sys.argv[1] if len(sys.argv) == 2 else None)
