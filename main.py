@@ -71,7 +71,25 @@ class Main(QWidget):
         if self.filedir is not None:
             self.parseYarnBall(self.filedir)
 
-   
+    def closeEvent(self, a0: QtGui.QCloseEvent) -> None:
+        
+        msg = QMessageBox(self)
+        msg.setText('There might be unsaved work. ')
+        msg.setInformativeText('Are you want to exit?')
+        msg.setStandardButtons(QMessageBox.StandardButton.Save|QMessageBox.StandardButton.Discard|QMessageBox.StandardButton.Cancel)
+        
+        val = msg.exec()
+        
+        if val == QMessageBox.StandardButton.Save:
+            if self.filedir is not None:
+                self.saveYarnBall(self.filedir)
+            else:
+                self.askToSave()
+                a0.accept()
+        elif val ==  QMessageBox.StandardButton.Discard:
+            a0.accept()
+        else:
+            a0.ignore()
 
     def parseYarnBall(self, filedir):
         """
@@ -84,7 +102,8 @@ class Main(QWidget):
             for line in file.readlines():
                 if postPattern.match(line):
                     p = line.split('|')
-                    idMap[int(p[0])] = self.newItem(int(p[4]), int(p[5]), int(p[6]),int(p[7]), p[2], p[3],p[1], id=int(p[0]))
+                    print(p[3].encode())
+                    idMap[int(p[0])] = self.newItem(int(p[4]), int(p[5]), int(p[6]),int(p[7]), p[2], p[3].encode('utf-8').decode('unicode_escape'),p[1], id=int(p[0]))
                 elif connectionPattern.match(line):
                     connections.append(line.split('|'))
                 else:
@@ -92,12 +111,14 @@ class Main(QWidget):
 
             for item in connections:
                 p = PostLabel(self)
-                p.updateText(item[3], item[2])
-                self.connections[idMap[int(item[0])], idMap[int(item[1])]] = (item[2], p) 
+                p.updateText(item[3].strip(), item[2])
+                pair = (idMap[int(item[0])], idMap[int(item[1])])
+                self.connections[pair] = (item[2], p) 
+                self.repositionLabel(pair, p)
 
             if len(idMap) > 0:
                 self.index = max(idMap.keys()) + 1
-            self.reposition()
+            
     
 
     @pyqtSlot()
@@ -105,10 +126,11 @@ class Main(QWidget):
         with open(filedir, "w") as file:
             for item in self.items:
                 file.write(
-                    f"""{item.id}|{item.color}|{item.title.text()}|{item.content.toPlainText()}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
+                    f"""{item.id}|{item.color}|{item.title.text()}|{str(item.content.toPlainText().encode('unicode_escape').decode('utf-8'))}|{int(item.xPos)}|{int(item.yPos)}|{int(item.sizeX)}|{int(item.sizeY)}\n"""
                 )
+                print(item.content.toPlainText())
             for pair, value in self.connections.items():
-                file.write(f"{pair[0].id}|{pair[1].id}|{value[0]}|{value[1].text()}")
+                file.write(f"{pair[0].id}|{pair[1].id}|{value[0]}|{value[1].text()}\n")
             msg = QMessageBox()
             msg.setText(f"File saved as : {self.filedir}")
             msg.setWindowTitle("File saved.")
@@ -157,8 +179,10 @@ class Main(QWidget):
         if not pair[0].isVisible() or not pair[1].isVisible():
             label.setVisible(False)
             return
-        elif label.text() != '':
+        elif len(label.text()) > 0:
+            print(label.text().encode())
             label.setVisible(True)
+        
         if not label.isVisible():
             return
         avgx = (pair[0].pos().x() + pair[1].pos().x() + pair[1].width()/2 + pair[0].width()/ 2) / 2
@@ -725,7 +749,6 @@ class PostLabel(QLabel):
     
     def __init__(self, parent):
         super().__init__(parent)
-
         self.hide()
     def updateText(self, text, color):
     
