@@ -303,7 +303,7 @@ class Main(QWidget):
         self.selectedItem.box.setStyleSheet(
             f"""QGroupBox {{
         background-color:  {self.selectedItem.color};
-        border:5px solid {self.selectedItem.color};
+        border:{int(5*self.scale)}px solid {self.selectedItem.color};
         }}"""
         )
         self.selectedItem.scale(self.scale)
@@ -456,7 +456,9 @@ class Main(QWidget):
         for item in self.connections.values():
             item[1].updateText(item[1].text(), item[0])
     def wheelEvent(self, a0: QtGui.QWheelEvent) -> None:
-
+        if self.selectedItem is None:
+            a0.ignore()
+            return
         if a0.angleDelta().y() > 0:
             self.scaleCanvas(0.1)
         else:
@@ -676,12 +678,13 @@ class PostBox(QWidget):
             self.box.setStyleSheet(
             f"""QGroupBox {{
         background-color:  {self.color};
-        border:5px solid {self.color};
+        border:{int(5*self.master.scale)}px solid {self.color};
         }}"""
         )
 
         if a0.buttons() == MouseButton.RightButton:
             color = QColorDialog.getColor()
+            if not color.isValid(): return
             self.box.setStyleSheet(
                 f"""QGroupBox {{
             background-color:  {color.name()};
