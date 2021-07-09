@@ -1,25 +1,15 @@
 import os
 import re
+import sys
+from math import sqrt
+
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QPoint, Qt, pyqtSlot
 from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
-from PyQt5.QtWidgets import (
-    QDialog,
-    QFileDialog,
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QWidget,
-    QLineEdit,
-    QTextEdit,
-    QGroupBox,
-    QVBoxLayout,
-    QColorDialog,
-    QApplication
-)
-import sys
-from math import sqrt
+from PyQt5.QtWidgets import (QApplication, QColorDialog, QDialog, QFileDialog,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QMessageBox, QPushButton, QTextEdit, QVBoxLayout,
+                             QWidget)
 
 MouseButton = QtCore.Qt.MouseButton
 MousePointer = QtCore.Qt.CursorShape
