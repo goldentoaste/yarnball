@@ -2,7 +2,7 @@ import os
 import re
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QPoint, Qt, pyqtSlot
-from PyQt5.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPen, QTextLine
+from PyQt5.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QVBoxLayout,
     QColorDialog,
-    QApplication,
+    QApplication
 )
 import sys
 from math import sqrt
